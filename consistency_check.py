@@ -2,17 +2,23 @@ import numpy as np
 from copy import deepcopy
 from joblib import Parallel, delayed
 from scipy.special import logsumexp, softmax
-from envs import GridWorld, Chain, TwoRoomDense, TwoRoomSparse
+from envs import GridWorld, Chain, TwoRoomSparse
 from regularized_value_iteration import SmoothValueIterator
 import multiprocessing
 
 
+np.random.seed(42)
+
+
 class SmoothCruiser:
+    """
+    Simplified version of SmoothCruiser (see Appendix F)
+    """
     def __init__(self, env, gamma, eta):
         self.env = deepcopy(env)
         self.gamma = gamma
         self.eta = eta
-        self.K = env_.action_space.n
+        self.K = env.action_space.n
         self.L = 1 / eta
 
         # Environment seed
@@ -27,7 +33,7 @@ class SmoothCruiser:
         self.trueQ = smooth_vi.Q
         self.trueV = smooth_vi.V
 
-        # self.count = 0  # for debug
+        self.count = 0  # for debug
 
     def F(self, state, q):
         eta = self.eta
@@ -39,7 +45,6 @@ class SmoothCruiser:
 
     def estimateQ(self, state, epsilon):
         return self.trueQ[state, :] + epsilon*np.random.uniform(-1.0, 1.0, size=self.K)
-        # return self.trueQ[state, :] + epsilon*np.ones(self.K)
 
     def sampleV(self, state, epsilon):
         if epsilon >= (1.0+self.eta*np.log(self.K))/(1.0-self.gamma):
@@ -60,7 +65,7 @@ class SmoothCruiser:
 
             v = self.sampleV(z, epsilon/np.sqrt(self.gamma))
 
-            # self.count += 1
+            self.count += 1
 
             out = self.F(state, Q) - Q.dot(grad) + (r + self.gamma * v) * grad.sum()
 
@@ -72,27 +77,26 @@ class SmoothCruiser:
 
 def get_error(args):
     smoothcruiser, state, target_acc = args
+    smoothcruiser.count = 0
     v_estimate = smoothcruiser.sampleV(state, target_acc)
     error = v_estimate - smoothcruiser.trueV[state]
+    assert smoothcruiser.count > 1, "no calls to the generative model!"  # making sure SmoothCruiser is being used!
+    # print(smoothcruiser.count)
     return error, v_estimate
 
 
-def check(env, gamma, eta, target_rel_error, N_sim):
+def check(env, gamma, eta, target_accuracy, N_sim):
     # SmoothCruiser
     sc = SmoothCruiser(env, gamma, eta)
-
-    #
-    print(sc.trueV)
-
     # target accuracy
     M_lambda = eta * np.log(env.action_space.n)
-    target_acc = target_rel_error*(1.0+M_lambda)/(1-gamma)
+    V_lambda_max = (1.0+M_lambda)/(1-gamma)
 
     # Compute error mean and standard deviation (using joblib)
-    njobs = max(1, multiprocessing.cpu_count() - 1)
-    args = (sc, env.reset(), target_acc)
+    njobs = 1  # max(1, multiprocessing.cpu_count() - 1)
+    args = (sc, env.reset(), target_accuracy)
     arg_instances = [deepcopy(args) for ii in range(N_sim)]
-    outputs = Parallel(n_jobs=njobs, backend="multiprocessing")(map(delayed(get_error), arg_instances))
+    outputs = Parallel(n_jobs=njobs, backend="threading")(map(delayed(get_error), arg_instances))
 
     error, v_estimate = zip(*outputs)
     error = np.array(error)
@@ -104,33 +108,50 @@ def check(env, gamma, eta, target_rel_error, N_sim):
     # Checking item (iii) of Lemma 2
     C_gamma = (3+2*M_lambda)/np.power(1.0-gamma, 2)
 
-    print('Vmax = ', (1.0+M_lambda)/(1-gamma))
-    print('target acc = %0.5E' % target_acc)
-    print('error = (%0.5E +- %0.5E)' % (error_mean, error_std))
+    print('--- Vmax = ', V_lambda_max)
+    print('--- target acc = %0.5E' % target_accuracy)
+    print('--- error = (%0.5E +- %0.5E)' % (error_mean, error_std))
     print('')
-    print("C_gamma = ", C_gamma)
-    print("max of v_estimate = ", np.abs(v_estimate).max())
+    print("--- C_gamma = ", C_gamma)
+    print("--- max of v_estimate = ", np.abs(v_estimate).max())
+    print('')
 
-    assert np.abs(error_mean) <= target_acc, "accuracy error"
+    assert np.abs(error_mean) <= target_accuracy, "accuracy error"
     assert np.abs(v_estimate).max() <= C_gamma, "bound error"
 
+    print("\n ... passed!")
     return error, v_estimate, sc
 
 
 if __name__ == '__main__':
     # Environment and parameters
-    env_names = ['5x5 GridWorld', '10x10 GridWorld', '5 Chain', '10 Chain']
-    env_list = []
-    env_ = Chain(5)
-    # env_ = TwoRoomSparse(10, 10, success_probability=0.75, enable_render=False)
-    gamma_ = 0.5  # discount factor
-    eta_ = 0.001  # regularization
+    env_names = ['5 Chain', '10 Chain', '5x5 GridWorld', '10x10 GridWorld']
+    env_list = [Chain(5),
+                Chain(10),
+                TwoRoomSparse(5, 5, success_probability=0.75, enable_render=False),
+                TwoRoomSparse(10, 10, success_probability=0.75, enable_render=False)]
 
-    # Number of simulations
-    N_sim = 200
+    gamma_ = 0.2  # discount factor
+    eta_ = 10  # regularization
 
-    # Target relative error
-    target_rel_error = 1e-3
+    K_ref = 4  # largest number of actions among environments in env_list
+    M_lambda_ref = eta_ * np.log(K_ref)
+    C_gamma_ref = (3 + 2 * M_lambda_ref) / np.power(1.0 - gamma_, 2)  # constant in item (iii) of Lemma 2
+
+    # Computing target accuracy (epsilon)
+    kappa = eta_*(1.0 - np.sqrt(gamma_))/K_ref
+    target_accuracy = kappa/4.0
+
+    # Number of simulations required so that $\hat{\Delta}(s, \epsilon)$ (appendix F.2) is close to its mean
+    # This uses Hoeffding's inequality and the fact that the estimates are bounded by C_gamma_ref
+    confidence = 0.2
+    N_sim = int((C_gamma_ref**2.0)/(2*(target_accuracy**2))*np.log(1/confidence))
+
+    print('N_sim = ', N_sim)
 
     # Run check
-    error, v_estimate, sc = check(env_, gamma_, eta_, target_rel_error, N_sim)
+    for ii, env_ in enumerate(env_list):
+        print("-------------------")
+        print(env_names[ii])
+        error, v_estimate, sc = check(env_, gamma_, eta_, target_accuracy, N_sim)
+

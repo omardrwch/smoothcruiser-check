@@ -1,12 +1,5 @@
-"""
-TODO:
-    - Write more tests
-    - Improve render functions
-"""
-
-
 import numpy as np
-from rlplan.envs import FiniteMDP
+from .finitemdp import FiniteMDP
 # rlplan.envs.rendering_gw is imported in the constructor of GridWorld
 
 

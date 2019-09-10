@@ -3,7 +3,7 @@ A set of useful environments for debugging algorithms.
 """
 
 import numpy as np
-from rlplan.envs import GridWorld
+from .gridworld import GridWorld
 
 
 class TwoRoomDense(GridWorld):

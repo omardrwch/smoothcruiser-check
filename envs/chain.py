@@ -1,4 +1,4 @@
-from rlplan.envs.deterministic_mdp import DeterministicFiniteMDP
+from .deterministic_mdp import DeterministicFiniteMDP
 
 
 class Chain(DeterministicFiniteMDP):
