@@ -106,7 +106,7 @@ def check(env, gamma, eta, target_accuracy, N_sim):
     error_std = error.std()
 
     # Checking item (iii) of Lemma 2
-    C_gamma = (3+2*M_lambda)/np.power(1.0-gamma, 2)
+    C_gamma = 3*(1+M_lambda)/np.power(1.0-gamma, 2)
 
     print('--- Vmax = ', V_lambda_max)
     print('--- target acc = %0.5E' % target_accuracy)
@@ -136,7 +136,7 @@ if __name__ == '__main__':
 
     K_ref = 4  # largest number of actions among environments in env_list
     M_lambda_ref = eta_ * np.log(K_ref)
-    C_gamma_ref = (3 + 2 * M_lambda_ref) / np.power(1.0 - gamma_, 2)  # constant in item (iii) of Lemma 2
+    C_gamma_ref = 3*(1 + M_lambda_ref) / np.power(1.0 - gamma_, 2)  # constant in item (iii) of Lemma 2
 
     # Computing target accuracy (epsilon)
     kappa = eta_*(1.0 - np.sqrt(gamma_))/K_ref

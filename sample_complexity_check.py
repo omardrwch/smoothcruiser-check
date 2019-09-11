@@ -38,12 +38,12 @@ def get_derived_constants(lambda_reg):
     kappa = (1 - np.sqrt(gamma)) / (K * L)
 
     # \beta(\delta) defined in Lemma 1
-    beta = np.log(2 * K / delta) * L * 2 * np.power((3 + M_lambda)*K, 2)
+    beta = np.log(2 * K / delta) * L * 18 * np.power((1 + M_lambda)*K, 2)
     beta = beta/(np.power(1 - gamma, 4) * np.power(1 - np.sqrt(gamma), 3))
 
     # \alpha(\delta) defined in Proposition 1
-    alpha = np.log(2 * K / delta)*2*K*np.power(3+M_lambda, 2)
-    alpha = alpha / (np.power(1 - gamma, 4) * np.power(1 - np.sqrt(gamma), 2))
+    alpha = np.log(2 * K / delta)*18*K*np.power(1+M_lambda, 2)
+    alpha = 2*alpha / (np.power(1 - gamma, 4) * np.power(1 - np.sqrt(gamma), 2))
 
     return kappa, beta, alpha, L, M_lambda
 
